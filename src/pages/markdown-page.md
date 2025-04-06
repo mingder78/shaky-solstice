@@ -13,4 +13,7 @@ layout: ../layouts/main.astro
  >
   Go home
  </a>
+ <button class="btn btn-primary">Primary Button</button>
+
+
 </div>

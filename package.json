@@ -1,7 +1,7 @@
 {
   "name": "shaky-solstice",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
@@ -19,5 +19,8 @@
     "canvas-confetti": "^1.9.3",
     "elysia": "^1.2.25",
     "tailwindcss": "^4.0.17"
+  },
+  "devDependencies": {
+    "daisyui": "^5.0.12"
   }
 }
