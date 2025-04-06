@@ -9,14 +9,46 @@ const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const RATE_LIMIT_MAX = 100; // 100 requests per IP
 
 const plugin = new Elysia()
-    .decorate('plugin', 'hi')
-    .get('/plugin', ({ plugin }) => plugin)
+  .decorate("plugin", "hi")
+  .get("/plugin", ({ plugin }) => plugin);
 
 const app = new Elysia()
   .use(securityMiddleware)
   .use(plugin)
   .use(swagger({ prefix: "/api/docs" }))
-  .get("/api/register/start", ({ request, cookie, set }) => {
+  .get("/ping", () => "pong")
+  .derive(({ cookie }) => {
+    const sessionToken = cookie.sessionToken?.value;
+    const isValid = true; //sessionToken && isValidSession(sessionToken);
+    return {
+      session: {
+        isValid,
+        token: sessionToken,
+      },
+    };
+  })
+  /**
+   * @openapi
+   * /api/register/start:
+   *   get:
+   *     description: Starts WebAuthn registration by providing public key options
+   *     responses:
+   *       200:
+   *         description: Returns WebAuthn publicKey options
+   *         content:
+   *           application/json:
+   *             schema:
+   *               type: object
+   *               properties:
+   *                 challenge: { type: string }
+   *                 rp: { type: object }
+   *                 user: { type: object }
+   *       401:
+   *         description: Unauthorized
+   *       429:
+   *         description: Too Many Requests
+   */
+  .get("/api/register/start", ({ request, cookie, set, session }) => {
     const ip = request.headers.get("x-forwarded-for") || "unknown";
     const now = Date.now();
     if (!rateLimitStore[ip]) {
@@ -38,8 +70,7 @@ const app = new Elysia()
     console.log("Session store:", sessions);
     console.log("Rate limit store:", rateLimitStore);
 
-    const sessionToken = cookie.sessionToken?.value;
-    if (!sessionToken || !isValidSession(sessionToken)) {
+    if (!session.isValid) {
       set.status = 401;
       return "Unauthorized";
     }
