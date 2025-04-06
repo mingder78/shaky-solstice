@@ -18,14 +18,10 @@ const app = new Elysia()
   .use(swagger({ prefix: "/api/docs" }))
   .get("/ping", () => "pong")
   .derive(({ cookie }) => {
-    const sessionToken = cookie.sessionToken?.value;
-    const isValid = true; //sessionToken && isValidSession(sessionToken);
-    return {
-      session: {
-        isValid,
-        token: sessionToken,
-      },
-    };
+    const sessionId = cookie.sessionId?.value;
+    const sessionData = sessions[sessionId];
+    const isValid = sessionData && Date.now() < sessionData.expires;
+    return { session: { isValid, id: sessionId, data: sessionData } };
   })
   /**
    * @openapi
@@ -70,7 +66,7 @@ const app = new Elysia()
     console.log("Session store:", sessions);
     console.log("Rate limit store:", rateLimitStore);
 
-    if (!session.isValid) {
+    if (!session.isValid && Object.keys(sessions).length > 0) {
       set.status = 401;
       return "Unauthorized";
     }
@@ -89,6 +85,13 @@ const app = new Elysia()
       maxAge: 600,
     });
 
+    //or
+    /*
+    set.headers['Set-Cookie'] = [
+      `sessionId=${sessionId}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=600`,
+    ];
+    */
+
     const publicKey = {
       challenge: challenge.toString("base64"),
       rp: { name: "MyApp" },
@@ -103,6 +106,70 @@ const app = new Elysia()
     };
     console.log("Public Key:", publicKey);
     return publicKey;
+  })
+  .post("/api/register/complete", async ({ request, body, set, session }) => {
+    const ip = request.headers.get("x-forwarded-for") || "unknown";
+    const now = Date.now();
+    if (!rateLimitStore[ip]) {
+      rateLimitStore[ip] = { count: 1, resetTime: now + RATE_LIMIT_WINDOW_MS };
+    } else {
+      if (now > rateLimitStore[ip].resetTime) {
+        rateLimitStore[ip] = {
+          count: 1,
+          resetTime: now + RATE_LIMIT_WINDOW_MS,
+        };
+      } else if (rateLimitStore[ip].count >= RATE_LIMIT_MAX) {
+        set.status = 429;
+        return "Too Many Requests";
+      } else {
+        rateLimitStore[ip].count += 1;
+      }
+    }
+
+    if (!session.isValid) {
+      set.status = 401;
+      return "Session expired or invalid";
+    }
+
+    const { id, rawId, response, type } = body;
+    if (type !== "public-key") {
+      set.status = 400;
+      return "Invalid credential type";
+    }
+
+    const clientDataJSON = Buffer.from(
+      response.clientDataJSON,
+      "base64"
+    ).toString("utf-8");
+    const clientData = JSON.parse(clientDataJSON);
+    const originalChallenge = session.data.challenge.toString("base64");
+
+    if (clientData.challenge !== originalChallenge) {
+      set.status = 400;
+      return "Challenge mismatch";
+    }
+
+    if (clientData.type !== "webauthn.create") {
+      set.status = 400;
+      return "Invalid client data type";
+    }
+
+    if (clientData.origin !== "http://localhost:4321") {
+      set.status = 400;
+      return "Invalid origin";
+    }
+
+    const attestationObject = Buffer.from(response.attestationObject, "base64");
+
+    credentials[id] = {
+      userId: session.data.userId,
+      publicKey: "not-extracted-yet",
+      createdAt: now,
+    };
+
+    delete sessions[session.id];
+
+    return "Registration successful";
   });
 
 function isValidSession(token) {
@@ -112,3 +179,6 @@ function isValidSession(token) {
 
 // Export handler for Astro
 export const GET = (context) => app.handle(context.request);
+export const POST = (context) => app.handle(context.request);
+
+export const prerender = false;
