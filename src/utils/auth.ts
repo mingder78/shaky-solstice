@@ -18,15 +18,31 @@ async function getPublicKeyOptions() {
 }
 
 export async function signUp(username: string): Promise<User> {
+	console.log(`signUp: ${username}`);
   // should be handled in server - start (done in the server)
   // check if username already exists
   const publicKeyOptions = await getPublicKeyOptions();
   // should be handled in server - end
 
+  const challengeBase64 = publicKeyOptions.challenge;
+    const challengeArrayBuffer = Uint8Array.from(atob(challengeBase64), c => c.charCodeAt(0));
+    publicKeyOptions.challenge = challengeArrayBuffer;
+  
+  console.log(`challenge: ${publicKeyOptions.challenge}`);	
+console.log(`publicKeyOptions: ${publicKeyOptions}`);
+
+const challengeBase64userid = publicKeyOptions.user.id;
+const challengeArrayBufferuserid= Uint8Array.from(atob(challengeBase64userid), c => c.charCodeAt(0));
+publicKeyOptions.user.id = challengeArrayBufferuserid;
+
+console.log(`user.id: ${publicKeyOptions.user.id}`);
+
   const publicKeyCredential = await navigator.credentials.create(
     // publicKey = Web Authentication API
-    publicKeyOptions
+    { publicKey: publicKeyOptions }
   );
+
+  console.log(`publicKeyCredential: ${publicKeyCredential}`);
   if (!(publicKeyCredential instanceof PublicKeyCredential)) {
     throw new TypeError();
   }
@@ -39,6 +55,7 @@ export async function signUp(username: string): Promise<User> {
   // should be handled in server from here
   const userId = generateId(8);
   const publicKey = publicKeyCredential.response.getPublicKey();
+  console.log(`getPublicKey: ${publicKey}`);
   if (!publicKey) {
     throw new Error("Could not retrieve public key");
   }

@@ -73,6 +73,7 @@
     const formData = new FormData(signupForm);
     const username = formData.get("username");
     if (typeof username !== "string" || username.length < 1) return;
+    console.log("Signing up with username:", username);
     const user = await signUp(username);
     statusParagraph.textContent = `You're signed in as ${user.username} (user ID: ${user.userId}).`;
   });

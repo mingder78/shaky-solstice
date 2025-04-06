@@ -72,8 +72,8 @@ const app = new Elysia()
     }
 
     const challenge = randomBytes(32);
-    const userId = Buffer.from("unique-user-id"); // Replace with real user ID logic
     const sessionId = crypto.randomUUID();
+    const userId = randomBytes(8); // Replace with real user ID logic
 
     sessions[sessionId] = { challenge, userId, expires: now + 600000 };
 
@@ -96,7 +96,7 @@ const app = new Elysia()
       challenge: challenge.toString("base64"),
       rp: { name: "MyApp" },
       user: {
-        id: userId,
+        id: userId.toString("base64"),
         name: "user@example.com",
         displayName: "User Name",
       },
