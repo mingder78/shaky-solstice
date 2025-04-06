@@ -2,6 +2,10 @@ import { db } from "./db";
 import { decodeBase64Url, encodeBase64Url } from "./encode";
 import { verifyAssertion } from "./passkey";
 import { getUserbyName } from "../db/helper";
+// Helper to convert ArrayBuffer to base64
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+	return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+  }
 
 type User = {
   userId: string;
@@ -59,12 +63,34 @@ console.log(`user.id: ${publicKeyOptions.user.id}`);
   if (!publicKey) {
     throw new Error("Could not retrieve public key");
   }
+  /*
   db.insert({
     id: userId,
     credential_id: publicKeyCredential.id, // base64url encoded
     username,
     public_key: encodeBase64Url(publicKey),
   });
+*/
+   // Send response back to server
+   const credentialData = {
+    id: publicKeyCredential.id,
+    rawId: arrayBufferToBase64(publicKeyCredential.rawId),
+    response: {
+      attestationObject: arrayBufferToBase64(publicKeyCredential.response.attestationObject),
+      clientDataJSON: arrayBufferToBase64(publicKeyCredential.response.clientDataJSON),
+    },
+    type: publicKeyCredential.type,
+  };
+
+  console.log(`credentialData JSON: ${JSON.stringify(credentialData)}`);
+
+  await fetch('/api/register/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(credentialData),
+  });
+
+  console.log('Registration complete!');
 
   return { userId, username };
 }
