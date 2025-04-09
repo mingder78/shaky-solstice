@@ -1,9 +1,11 @@
 // src/pages/api/register/start.js
+import { decode } from 'cbor-x';
 import { Elysia, t } from "elysia";
 import { swagger } from "@elysiajs/swagger";
 import { randomBytes } from "crypto";
 import { sessions, rateLimitStore, credentials } from "../lib/storage";
 import { securityMiddleware } from "../middleware/security";
+import { encodeBase64Url, decodeBase64Url } from "../utils/encode";
 
 const RATE_LIMIT_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
 const RATE_LIMIT_MAX = 100; // 100 requests per IP
@@ -13,15 +15,11 @@ const WebAuthnCredentialSchema = t.Object({
   id: t.String(), // Base64url-encoded credential ID
   rawId: t.String(), // Base64-encoded raw ID
   response: t.Object({
-    attestationObject: t.String(), // Base64-encoded attestation object
-    clientDataJSON: t.String(), // Base64-encoded client data JSON
+    attestationObject: t.String(), // Base64url-encoded attestation object
+    clientDataJSON: t.String(), // Base64url-encoded client data JSON
   }),
   type: t.Literal("public-key"), // Literal type for "public-key"
 });
-
-function toBase64url(buffer: Buffer): string {
-  return buffer.toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-}
 
 const plugin = new Elysia()
   .decorate("plugin", "hi")
@@ -91,7 +89,7 @@ const app = new Elysia()
         return "Unauthorized";
       }
 
-      const challenge = toBase64url(randomBytes(32));
+      const challenge = randomBytes(32);
       const sessionId = crypto.randomUUID();
       const userId = randomBytes(8); // Replace with real user ID logic
 
@@ -158,15 +156,13 @@ const app = new Elysia()
           rateLimitStore[ip].count += 1;
         }
       }
-
-      /*
-    if (!session.isValid) {
-      set.status = 401;
-      return "Session expired or invalid";
-    }
-      */
-
-      console.log(body);
+/*
+      if (!session.isValid) {
+        set.status = 401;
+        return "Session expired or invalid";
+      }
+*/
+      console.log(`body: ${JSON.stringify(body)}`);
 
       const { id, rawId, response, type } = body;
       if (type !== "public-key") {
@@ -178,18 +174,17 @@ const app = new Elysia()
         response.clientDataJSON,
         "base64"
       ).toString("utf-8");
-      console.log('clientDataJSON:', clientDataJSON);
+      console.log("clientDataJSON:", clientDataJSON);
 
       const clientData = JSON.parse(clientDataJSON);
-      console.log('clientData:', clientData);
-      console.log('session.data.challenge:', session.data.challenge)
-      const originalChallenge = session.data.challenge.toString("base64");
-console.log('originalChallenge:', originalChallenge);
+  
+      const originalChallenge = encodeBase64Url(session.data.challenge);
+      console.log("originalChallenge:", originalChallenge);
       if (clientData.challenge !== originalChallenge) {
         set.status = 400;
+        console.log("Challenge mismatch");
         return "Challenge mismatch";
       }
-      console.log('2');
 
       if (clientData.type !== "webauthn.create") {
         set.status = 400;
@@ -201,11 +196,32 @@ console.log('originalChallenge:', originalChallenge);
         return "Invalid origin";
       }
 
-      const attestationObject = Buffer.from(
-        response.attestationObject,
-        "base64"
-      );
-     console.log(attestationObject); 
+      const attestationObject = 
+        Buffer.from(response.attestationObject, "base64")
+         
+      console.log("attestationObject:", attestationObject);
+
+      // Decode attestationObject (if not already decoded from base64url)
+      const decodedAttestation = decode(attestationObject);
+      console.log("decodedAttestation:", decodedAttestation);
+      // Extract authData
+      const authData = decodedAttestation.authData;
+      console.log("authData:", authData);
+      // Parse public key from authData (offset depends on structure, e.g., after RP ID hash and flags)// Parse the authData
+const rpIdHash = authData.subarray(0, 32); // First 32 bytes
+const flags = authData[32]; // 33rd byte
+const signCounter = authData.readUInt32BE(33); // Next 4 bytes (big-endian)
+
+// Check flags to see if attested credential data is included
+const attestedCredentialDataIncluded = (flags & 0x40) !== 0;
+
+console.log({
+  rpIdHash: rpIdHash.toString('hex'),
+  flags: flags.toString(2).padStart(8, '0'), // Binary representation
+  signCounter,
+  attestedCredentialDataIncluded,
+}); 
+
       credentials[id] = {
         userId: session.data.userId,
         publicKey: "not-extracted-yet",
@@ -213,7 +229,7 @@ console.log('originalChallenge:', originalChallenge);
       };
       console.log(credentials);
 
-     // delete sessions[session.id];
+      // delete sessions[session.id];
 
       return "Registration successful";
     },

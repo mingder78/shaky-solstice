@@ -29,6 +29,7 @@ export async function signUp(username: string): Promise<User> {
   // should be handled in server - end
 
   const challengeBase64 = publicKeyOptions.challenge;
+  console.log(`challengeBase64: ${challengeBase64}`);
     const challengeArrayBuffer = Uint8Array.from(atob(challengeBase64), c => c.charCodeAt(0));
     publicKeyOptions.challenge = challengeArrayBuffer;
   
